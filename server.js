@@ -5,19 +5,26 @@ const socketIO = require('socket.io');
 const app = express();
 const server = http.createServer(app);
 const io = socketIO(server);
-const PORT = process.env.PORT || 3000; // ← 修正ポイント！
+const PORT = process.env.PORT || 3000;
 
 app.use(express.static(__dirname));
 
-// 最初からルームを3つ用意
-const rooms = {
-  "RoomA": [],
-  "RoomB": [],
-  "RoomC": []
+// ✅ 無制限チャットルーム（制限なし）
+const unlimitedRooms = {
+  "全体討論_RoomA": [],
+  "全体討論_RoomB": []
+};
+
+// ✅ 2人制チャットルーム
+const limitedRooms = {
+  "RoomA_密談": [],
+  "RoomB_密談": [],
+  "RoomC_密談": []
 };
 
 function broadcastRoomList() {
-  io.emit('roomList', Object.entries(rooms).map(([name, users]) => ({
+  const allRooms = { ...unlimitedRooms, ...limitedRooms };
+  io.emit('roomList', Object.entries(allRooms).map(([name, users]) => ({
     name,
     count: users.length
   })));
@@ -27,19 +34,26 @@ io.on('connection', (socket) => {
   broadcastRoomList();
 
   socket.on('joinRoom', ({ roomId, username }) => {
-    if (!rooms[roomId]) rooms[roomId] = [];
+    const allRooms = { ...unlimitedRooms, ...limitedRooms };
 
-    if (rooms[roomId].length >= 2) {
+    if (!allRooms[roomId]) return;
+
+    const isLimited = roomId.startsWith('Room');
+    const roomArray = isLimited ? limitedRooms : unlimitedRooms;
+
+    if (!roomArray[roomId]) roomArray[roomId] = [];
+
+    if (isLimited && roomArray[roomId].length >= 2) {
       socket.emit('roomFull');
       return;
     }
 
     socket.join(roomId);
-    rooms[roomId].push({ id: socket.id, name: username });
+    roomArray[roomId].push({ id: socket.id, name: username });
 
     broadcastRoomList();
 
-    io.to(roomId).emit('roomUsers', rooms[roomId]);
+    io.to(roomId).emit('roomUsers', roomArray[roomId]);
     io.to(roomId).emit('message', {
       id: Date.now(),
       name: 'システム',
@@ -66,9 +80,9 @@ io.on('connection', (socket) => {
     });
 
     socket.on('disconnect', () => {
-      if (rooms[roomId]) {
-        rooms[roomId] = rooms[roomId].filter(user => user.id !== socket.id);
-        io.to(roomId).emit('roomUsers', rooms[roomId]);
+      if (roomArray[roomId]) {
+        roomArray[roomId] = roomArray[roomId].filter(user => user.id !== socket.id);
+        io.to(roomId).emit('roomUsers', roomArray[roomId]);
         io.to(roomId).emit('message', {
           id: Date.now(),
           name: 'システム',
@@ -76,8 +90,8 @@ io.on('connection', (socket) => {
           time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
         });
 
-        if (rooms[roomId].length === 0) {
-          rooms[roomId] = [];
+        if (roomArray[roomId].length === 0) {
+          roomArray[roomId] = [];
         }
 
         broadcastRoomList();

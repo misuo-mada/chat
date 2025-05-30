@@ -3,14 +3,15 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>ルーム一覧チャット</title>
+  <title>全体討論・密談アプリ</title>
   <style>
     html, body {
       margin: 0;
       padding: 0;
-      font-family: sans-serif;
-      background: #e5ddd5;
+      font-family: 'Segoe UI', sans-serif;
+      background: #1a1a1a;
       height: 100%;
+      color: #eee;
     }
 
     #login, #chat {
@@ -25,59 +26,70 @@
     }
 
     #roomList div {
-      background: #fff;
+      background: #2a2a2a;
       margin: 5px 0;
-      padding: 10px;
+      padding: 12px;
       cursor: pointer;
-      border-radius: 5px;
+      border-radius: 8px;
       font-size: 18px;
+      transition: background 0.2s;
+    }
+
+    #roomList div:hover {
+      background: #444;
     }
 
     #messages {
       flex: 1;
       overflow-y: auto;
       padding: 10px;
-      background: #dcf8c6;
-      border-radius: 5px;
+      background: #000000;
+      border-radius: 8px;
       margin-bottom: 10px;
     }
 
     .message {
-      margin: 5px;
-      padding: 10px;
-      border-radius: 10px;
       max-width: 80%;
+      margin: 8px;
+      padding: 10px 14px;
+      border-radius: 18px;
       position: relative;
       word-wrap: break-word;
+      font-size: 14px;
+      color: #eee;
     }
 
     .my {
-      background: #cfe9ba;
+      background: #5a5cd4;
       margin-left: auto;
+      border-bottom-right-radius: 0;
+      color: #000000;
     }
 
     .other {
-      background: white;
+      background: #333;
       margin-right: auto;
+      border-bottom-left-radius: 0;
     }
 
     .meta {
       font-size: 10px;
-      color: #555;
+      color: #999;
       text-align: right;
+      margin-top: 5px;
     }
 
     .delete-btn {
       position: absolute;
-      top: -5px;
-      right: -5px;
-      background: red;
+      top: -6px;
+      right: -6px;
+      background: #c00;
       color: white;
       border: none;
       border-radius: 50%;
       font-size: 12px;
-      width: 20px;
-      height: 20px;
+      width: 18px;
+      height: 18px;
       cursor: pointer;
     }
 
@@ -88,40 +100,26 @@
 
     #inputArea input {
       flex: 1;
-      padding: 10px;
+      padding: 12px;
       font-size: 16px;
-      border: 1px solid #aaa;
-      border-radius: 5px;
+      border: none;
+      border-radius: 8px;
+      background: #2b2b2b;
+      color: #eee;
     }
 
     #inputArea button {
-      padding: 10px;
-      background: #075e54;
+      padding: 12px;
+      background: #555;
       color: white;
       border: none;
-      border-radius: 5px;
+      border-radius: 8px;
       font-size: 16px;
-      flex-shrink: 0;
     }
 
     @media (max-width: 600px) {
-      #roomList div {
-        font-size: 16px;
-      }
-
-      #inputArea input, #inputArea button {
-        font-size: 14px;
-      }
-
-      .message {
-        font-size: 14px;
-      }
-
-      .delete-btn {
-        font-size: 10px;
-        width: 18px;
-        height: 18px;
-      }
+      .message { font-size: 13px; }
+      #inputArea input, #inputArea button { font-size: 14px; }
     }
   </style>
 </head>
@@ -144,23 +142,29 @@
   <script src="/socket.io/socket.io.js"></script>
   <script>
     const socket = io();
-    let username = '';
-    let roomId = '';
-    let lastMsgId = 0;
+  let username = '';
+  let roomId = '';
+  let lastMsgId = 0;
 
-    socket.on('roomList', (rooms) => {
-      const list = document.getElementById('roomList');
-      list.innerHTML = '';
-      if (rooms.length === 0) {
-        list.innerHTML = '<p>ルームはまだありません</p>';
-      }
-      rooms.forEach(room => {
-        const div = document.createElement('div');
-        div.textContent = `${room.name}（${room.count}/2）`;
-        div.onclick = () => enterRoom(room.name);
-        list.appendChild(div);
-      });
-    });
+  socket.on('roomList', (rooms) => {
+    const list = document.getElementById('roomList');
+    list.innerHTML = '';
+
+    // 無制限ルームを先に表示
+    const unlimited = rooms.filter(r => r.name.startsWith('FreeRoom'));
+    const limited = rooms.filter(r => !r.name.startsWith('FreeRoom'));
+
+    function createRoomElement(room) {
+      const div = document.createElement('div');
+      div.textContent = `${room.name}（${room.count}${room.name.startsWith('Room') ? '/2' : ''}）`;
+      div.onclick = () => enterRoom(room.name);
+      return div;
+    }
+
+    unlimited.forEach(r => list.appendChild(createRoomElement(r)));
+    limited.forEach(r => list.appendChild(createRoomElement(r)));
+  });
+
 
     function enterRoom(room) {
       username = document.getElementById('username').value.trim();
@@ -176,7 +180,15 @@
       location.reload();
     });
 
+    socket.on('messageHistory', (history) => {
+      history.forEach(msg => addMessage(msg));
+    });
+
     socket.on('message', (msg) => {
+      addMessage(msg);
+    });
+
+    function addMessage(msg) {
       const div = document.createElement('div');
       div.className = 'message ' + (msg.name === username ? 'my' : 'other');
       div.id = 'msg-' + msg.id;
@@ -197,7 +209,7 @@
       messages.scrollTop = messages.scrollHeight;
       lastMsgId = msg.id;
       socket.emit('seen', lastMsgId);
-    });
+    }
 
     socket.on('deleteMessage', (msgId) => {
       const msg = document.getElementById('msg-' + msgId);
