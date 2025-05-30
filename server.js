@@ -5,7 +5,7 @@ const socketIO = require('socket.io');
 const app = express();
 const server = http.createServer(app);
 const io = socketIO(server);
-const PORT = 3000;
+const PORT = process.env.PORT || 3000; // ← 修正ポイント！
 
 app.use(express.static(__dirname));
 
