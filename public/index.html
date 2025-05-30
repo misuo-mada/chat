@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <title>ルーム一覧チャット</title>
+  <style>
+    body { margin: 0; font-family: sans-serif; background: #e5ddd5; }
+    #login, #chat { padding: 20px; }
+    #chat { display: none; flex-direction: column; height: 100vh; }
+    #roomList div { background: #fff; margin: 5px 0; padding: 10px; cursor: pointer; border-radius: 5px; }
+    #messages { flex: 1; overflow-y: auto; padding: 10px; background: #dcf8c6; }
+    .message { margin: 5px; padding: 10px; border-radius: 10px; max-width: 70%; position: relative; }
+    .my { background: #cfe9ba; margin-left: auto; }
+    .other { background: white; margin-right: auto; }
+    .meta { font-size: 10px; color: #555; text-align: right; }
+    .delete-btn { position: absolute; top: -5px; right: -5px; background: red; color: white; border: none; border-radius: 50%; font-size: 12px; width: 20px; height: 20px; cursor: pointer; }
+    #inputArea { display: flex; margin-top: 10px; }
+    #inputArea input { flex: 1; padding: 10px; }
+    #inputArea button { padding: 10px; background: #075e54; color: white; border: none; }
+  </style>
+</head>
+<body>
+  <div id="login">
+    <h2>名前を入力してルームを選択</h2>
+    <input id="username" placeholder="名前">
+    <h3>利用可能なルーム</h3>
+    <div id="roomList"></div>
+  </div>
+
+  <div id="chat">
+    <div id="messages"></div>
+    <div id="inputArea">
+      <input id="msgInput" placeholder="メッセージ">
+      <button onclick="send()">送信</button>
+    </div>
+  </div>
+
+  <script src="/socket.io/socket.io.js"></script>
+  <script>
+    const socket = io();
+    let username = '';
+    let roomId = '';
+    let lastMsgId = 0;
+
+    socket.on('roomList', (rooms) => {
+      const list = document.getElementById('roomList');
+      list.innerHTML = '';
+      if (rooms.length === 0) {
+        list.innerHTML = '<p>ルームはまだありません</p>';
+      }
+      rooms.forEach(room => {
+        const div = document.createElement('div');
+        div.textContent = room;
+        div.onclick = () => enterRoom(room);
+        list.appendChild(div);
+      });
+    });
+
+    function enterRoom(room) {
+      username = document.getElementById('username').value;
+      if (!username) return alert('名前を入力してください');
+      roomId = room;
+      socket.emit('joinRoom', { roomId, username });
+      document.getElementById('login').style.display = 'none';
+      document.getElementById('chat').style.display = 'flex';
+    }
+
+    socket.on('roomFull', () => {
+      alert('このルームは満員です');
+      location.reload();
+    });
+
+    socket.on('message', (msg) => {
+      const div = document.createElement('div');
+      div.className = 'message ' + (msg.name === username ? 'my' : 'other');
+      div.id = 'msg-' + msg.id;
+      div.innerHTML = `
+        ${msg.name !== 'システム' ? `<strong>${msg.name}</strong><br>` : ''}
+        ${msg.text}
+        <div class="meta">${msg.time} ${msg.name === username ? '<span class="seen" id="seen-'+msg.id+'"></span>' : ''}</div>
+      `;
+      if (msg.name === username && msg.name !== 'システム') {
+        const btn = document.createElement('button');
+        btn.className = 'delete-btn';
+        btn.textContent = '×';
+        btn.onclick = () => socket.emit('deleteMessage', msg.id);
+        div.appendChild(btn);
+      }
+      document.getElementById('messages').appendChild(div);
+      lastMsgId = msg.id;
+      socket.emit('seen', lastMsgId);
+    });
+
+    socket.on('deleteMessage', (msgId) => {
+      const msg = document.getElementById('msg-' + msgId);
+      if (msg) msg.remove();
+    });
+
+    socket.on('readStatus', ({ id, seen }) => {
+      const seenMark = document.getElementById('seen-' + seen);
+      if (seenMark) seenMark.textContent = '✅';
+    });
+
+    function send() {
+      const input = document.getElementById('msgInput');
+      const text = input.value;
+      if (!text.trim()) return;
+      socket.emit('chatMessage', text);
+      input.value = '';
+    }
+  </script>
+</body>
+</html>
